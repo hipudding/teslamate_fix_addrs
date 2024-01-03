@@ -65,7 +65,7 @@ options:
   -b BATCH, --batch BATCH           batch size for one loop(BATCH).
   -t TIMEOUT, --timeout TIMEOUT     http request timeout(s)(HTTP_TIMEOUT).
   -r RETRY, --retry RETRY           http request max retries(HTTP_RETRY).
-  -i INTERVAL, --interval INTERVAL  if value not 0, run in infinity mode, fix record in                                         every interval seconds(INTERVAL).
+  -i INTERVAL, --interval INTERVAL  if value not 0, run in infinity mode, fix record in every interval seconds(INTERVAL).
 ```
 
 
