@@ -1,0 +1,15 @@
+services:
+  teslamate_fix_addrs:
+    image: huafengchun/teslamate_fix_addrs:latest
+    container_name: teslmate_fix_addrs
+    restart: unless-stopped
+    environment:
+    - DB_USER=teslamate
+    - DB_PASSWD=123456
+    - DB_HOST=database
+    - DB_PORT=5432
+    - DB_NAME=teslamate
+    - BATCH=10
+    - HTTP_TIMEOUT=5
+    - HTTP_RETRY=5
+    - INTERVAL=5
