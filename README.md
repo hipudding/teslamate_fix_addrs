@@ -2,7 +2,7 @@
 
 Fix blank address in teslamate
 
-**Thanks @WayneJz for the inspiration. See [teslamate-addr-fix](https://github.com/WayneJz/teslamate-addr-fix), address fixer written by go** 
+**Thanks [@WayneJz](https://github.com/WayneJz) for the inspiration. See [teslamate-addr-fix](https://github.com/WayneJz/teslamate-addr-fix), address fixer written by go** 
 
 
 
