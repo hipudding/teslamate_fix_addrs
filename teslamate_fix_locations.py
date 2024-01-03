@@ -1,6 +1,6 @@
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine, or_, and_
+from sqlalchemy import create_engine, or_
 import requests
 from requests.adapters import HTTPAdapter
 import json
@@ -8,17 +8,30 @@ from datetime import datetime
 import logging
 import argparse
 import os
-import time
+import signal
+from threading import Timer
 
 logging.basicConfig(level=logging.INFO)
 
+
+def handler(signum, frame):
+    '''Contrl-C handler.'''
+    logging.info("Ctrl-C pressed, exit.")
+    exit(0)
+
+
+signal.signal(signal.SIGINT, handler)
+
+
 class EnvDefault(argparse.Action):
+    '''args priority: cli args -> ENV -> default.'''
+
     def __init__(self, envvar, required=True, default=None, **kwargs):
         if envvar in os.environ:
             default = os.environ[envvar]
         if required and default:
             required = False
-        super(EnvDefault, self).__init__(default=default, required=required, 
+        super(EnvDefault, self).__init__(default=default, required=required,
                                          **kwargs)
 
     def __call__(self, parser, namespace, values, option_string=None):
@@ -47,17 +60,20 @@ parser.add_argument("-i", "--interval", required=False, type=int, default=0, act
 
 args = parser.parse_args()
 
-conn_str = "postgresql://%s:%s@%s:%s/%s" % (args.user, args.password, args.host, args.port, args.dbname)
 
-# do not add backslash in json.
 def custom_json_dumps(d):
+    '''do not add backslash in json.'''
     return d
 
+
+conn_str = "postgresql://%s:%s@%s:%s/%s" % (
+    args.user, args.password, args.host, args.port, args.dbname)
 engine = create_engine(conn_str, json_serializer=custom_json_dumps, echo=False)
 
 # open street map api.
-osm_resolve_url = "https://nominatim.openstreetmap.org/reverse?lat=%.6f&lon=%.6f&format=jsonv2&addressdetails=1&extratags=1&namedetails=1&zoom=19"
+osm_resolve_url = "https://nominatim.openstreetmap.org/reverse?lat=%.6f&lon=%.6f&format=jsonv2&addressdetails=1&extratags=1&namedetails=1&zoom=18"
 
+# reflact Objects from db tables.
 Base = automap_base()
 Base.prepare(autoload_with=engine)
 Drives = Base.classes.drives
@@ -65,7 +81,7 @@ ChargingProcesses = Base.classes.charging_processes
 Positions = Base.classes.positions
 Addresses = Base.classes.addresses
 
-# reference to teslamate's source code, get address value from multiple keys. 
+# reference to teslamate's source code, get address value from multiple keys.
 house_number_aliases = [
     'house_number',
     'street_number'
@@ -141,19 +157,23 @@ country_aliases = [
     'country_name'
 ]
 
-# get address value from multiple keys.
+
 def get_address_str(address, addr_keys):
+    '''get address value from multiple keys.'''
     for addr_key in addr_keys:
         if addr_key in address:
             return address[addr_key]
     return None
 
-# special process for address names.
-# 1. address.name
-# 2. address.namedetails.name
-# 3. address.namedetails.alt_name
-# 4. first element in address.display_name
+
 def get_address_name(address):
+    '''
+    address names comes from multiple places.
+    1. address.name.
+    2. address.namedetails.name.
+    3. address.namedetails.alt_name.
+    4. first element in address.display_name.
+    '''
     name = ''
     if 'name' in address.keys() and len(address['name']):
         name = address['name']
@@ -167,28 +187,26 @@ def get_address_name(address):
     return name
 
 
-# get position id from table positions by position_ids
 def get_position(session, position_id):
+    '''get position id from table positions by position_ids.'''
     position = session.query(Positions).filter(
         Positions.id == position_id).first()
     # position_id is foreign key to table positions. position will never be None.
     if position == None:
         # fatal error, exit now.
-        logging.error("Position with ID %s is not found." % position_id)
-        assert(False)
+        logging.fatal("Position with ID %s is not found." % position_id)
+        assert (False)
     return position
 
 
-# get address by position, calling open street map api.
-def get_address_info(position):
-    retries = args.retry
-    timeout = args.timeout
+def get_osm_address_info(position):
+    '''get address by position, calling open street map api.'''
     http_session = requests.Session()
-    http_session.mount('http://', HTTPAdapter(max_retries=retries))
-    http_session.mount('https://', HTTPAdapter(max_retries=retries))
+    http_session.mount('http://', HTTPAdapter(max_retries=args.retry))
+    http_session.mount('https://', HTTPAdapter(max_retries=args.retry))
     url = osm_resolve_url % (position.latitude, position.longitude)
     try:
-        response = http_session.get(url=url, timeout=timeout).text
+        response = http_session.get(url=url, timeout=args.timeout).text
     except:
         logging.error("Can't get address, position: latitude: %.6f, longitude: %.6f" % (
             position.latitude, position.longitude))
@@ -198,14 +216,14 @@ def get_address_info(position):
     return osm_address, response
 
 
-# select address from db, get address id which just added.
 def get_address_in_db(session, osm_id):
+    '''select address from db, get address id which just added.'''
     return session.query(Addresses).filter(
         Addresses.osm_id == osm_id).first()
 
 
-# add address to db.
-def add_address(session, osm_address, raw):
+def add_osm_address(session, osm_address, raw):
+    '''add osm address to db.'''
     exist_address = get_address_in_db(session, osm_address['osm_id'])
     if exist_address is None:
         session.add(Addresses(
@@ -213,14 +231,17 @@ def add_address(session, osm_address, raw):
             latitude=osm_address['lat'],
             longitude=osm_address['lon'],
             name=get_address_name(osm_address),
-            house_number=get_address_str(osm_address['address'], house_number_aliases),
+            house_number=get_address_str(
+                osm_address['address'], house_number_aliases),
             road=get_address_str(osm_address['address'], road_aliases),
-            neighbourhood=get_address_str(osm_address['address'], neighbourhood_aliases),
+            neighbourhood=get_address_str(
+                osm_address['address'], neighbourhood_aliases),
             city=get_address_str(osm_address['address'], city_aliases),
             county=get_address_str(osm_address['address'], county_aliases),
             postcode=get_address_str(osm_address['address'], ['postcode']),
             state=get_address_str(osm_address['address'], state_aliases),
-            state_district=get_address_str(osm_address['address'], ['state_district']),
+            state_district=get_address_str(
+                osm_address['address'], ['state_district']),
             country=get_address_str(osm_address['address'], country_aliases),
             raw=raw,
             inserted_at=datetime.now(),
@@ -232,95 +253,101 @@ def add_address(session, osm_address, raw):
         logging.info("address is already exist: %d, %s." %
                      (osm_address['osm_id'], osm_address['display_name']))
 
-# return address id and display_name by position id. Address will add into db if not exists.
+
 def get_address(session, position):
-    osm_address, raw = get_address_info(position)
+    '''
+    return address id and display_name by position id. 
+    Address will add into db if not exists.
+    '''
+    osm_address, raw = get_osm_address_info(position)
     if osm_address == None:
         return None, None
 
-    add_address(session, osm_address, raw)
+    add_osm_address(session, osm_address, raw)
     added_address = get_address_in_db(session, osm_address['osm_id'])
     return added_address.id, added_address.display_name
 
+
 def fix_address(session, batch_size, empty_count):
     # get empty records in drives.
-        empty_drive_addresses = session\
-            .query(Drives)\
-            .filter(or_(Drives.start_address_id.is_(None), Drives.end_address_id.is_(None)))\
-            .filter(Drives.start_position_id.is_not(None))\
-            .filter(Drives.end_position_id.is_not(None))\
-            .limit(batch_size)\
+    empty_drive_addresses = session\
+        .query(Drives)\
+        .filter(or_(Drives.start_address_id.is_(None), Drives.end_address_id.is_(None)))\
+        .filter(Drives.start_position_id.is_not(None))\
+        .filter(Drives.end_position_id.is_not(None))\
+        .limit(batch_size)\
+        .all()
+
+    # get empty records in charging_processes, all records are LE batch_size.
+    empty_charging_addresses = []
+    if len(empty_drive_addresses) < batch_size:
+        empty_charging_addresses = session\
+            .query(ChargingProcesses)\
+            .filter(ChargingProcesses.address_id.is_(None))\
+            .filter(ChargingProcesses.position_id.is_not(None))\
+            .limit(batch_size - len(empty_drive_addresses))\
             .all()
-            
-        # get empty records in charging_processes, all records are LE batch_size.
-        empty_charging_addresses = []
-        if len(empty_drive_addresses) < batch_size:
-            empty_charging_addresses = session\
-                .query(ChargingProcesses)\
-                .filter(ChargingProcesses.address_id.is_(None))\
-                .filter(ChargingProcesses.position_id.is_not(None))\
-                .limit(batch_size - len(empty_drive_addresses))\
-                .all()
 
-        # processing drives.
-        for empty_drive_address in empty_drive_addresses:
-            logging.info("=================== processing drive address (%d left) ===================" %
-                         (empty_count))
-            
-            # get positions.
-            start_position_id = empty_drive_address.start_position_id
-            end_position_id = empty_drive_address.end_position_id
-            start_position = get_position(session, start_position_id)
-            end_position = get_position(session, end_position_id)
-            
-            # get addresses.
-            start_address_id, start_address = get_address(
-                session, start_position)
-            end_address_id, end_address = get_address(session, end_position)
-            if start_address_id is None or end_address_id is None:
-                continue
-            
-            # update address ids.
-            empty_drive_address.start_address_id = start_address_id
-            empty_drive_address.end_address_id = end_address_id
-            logging.info("Changing drives(id = %d) start address to %s" %
-                         (empty_drive_address.id, start_address))
-            logging.info("Changing drives(id = %d) end address to %s" %
-                         (empty_drive_address.id, end_address))
-            empty_count -= 1
+    # processing drives.
+    for empty_drive_address in empty_drive_addresses:
+        logging.info("processing drive address (%d left)" %
+                     (empty_count))
 
-        # processing charging.
-        for empty_charging_address in empty_charging_addresses:
-            logging.info("=================== processing charging address (%d left) ===================" %
-                         (empty_count))
-            
-            # get position.
-            position_id = empty_charging_address.position_id
-            position = get_position(session, position_id)
-            
-            # get address.
-            address_id, address = get_address(session, position)
-            if address_id is None:
-                continue
-            
-            # update address id.
-            empty_charging_address.address_id = address_id
-            logging.info("Changing charging(id = %d) to %s" %
-                         (empty_charging_address.id, address))
-            empty_count -= 1
-        
-        # records processed.
-        return (len(empty_drive_addresses) + len(empty_charging_addresses))
+        # get positions.
+        start_position_id = empty_drive_address.start_position_id
+        end_position_id = empty_drive_address.end_position_id
+        start_position = get_position(session, start_position_id)
+        end_position = get_position(session, end_position_id)
 
-# get all empty records count.
+        # get addresses.
+        start_address_id, start_address = get_address(
+            session, start_position)
+        end_address_id, end_address = get_address(session, end_position)
+        if start_address_id is None or end_address_id is None:
+            continue
+
+        # update address ids.
+        empty_drive_address.start_address_id = start_address_id
+        empty_drive_address.end_address_id = end_address_id
+        logging.info("Changing drives(id = %d) start address to %s" %
+                     (empty_drive_address.id, start_address))
+        logging.info("Changing drives(id = %d) end address to %s" %
+                     (empty_drive_address.id, end_address))
+        empty_count -= 1
+
+    # processing charging.
+    for empty_charging_address in empty_charging_addresses:
+        logging.info("processing charging address (%d left)" %
+                     (empty_count))
+
+        # get position.
+        position_id = empty_charging_address.position_id
+        position = get_position(session, position_id)
+
+        # get address.
+        address_id, address = get_address(session, position)
+        if address_id is None:
+            continue
+
+        # update address id.
+        empty_charging_address.address_id = address_id
+        logging.info("Changing charging(id = %d) to %s" %
+                     (empty_charging_address.id, address))
+        empty_count -= 1
+
+    # records processed.
+    return (len(empty_drive_addresses) + len(empty_charging_addresses))
+
+
 def get_empty_record_count(session):
+    '''get all empty records count.'''
     empty_count = session\
         .query(Drives.id)\
         .filter(or_(Drives.start_address_id.is_(None), Drives.end_address_id.is_(None)))\
         .filter(Drives.start_position_id.is_not(None))\
         .filter(Drives.end_position_id.is_not(None))\
         .count()
-            
+
     empty_count += session\
         .query(ChargingProcesses.id)\
         .filter(ChargingProcesses.address_id.is_(None))\
@@ -329,24 +356,27 @@ def get_empty_record_count(session):
     return empty_count
 
 
-# main loop
-def process():
+def fix_empty_records():
     # for low memory devices.
-    batch_size = args.batch
-    interval = args.interval
     while True:
         with Session(engine) as session:
             logging.info("checking...")
             empty_count = get_empty_record_count(session)
-            if fix_address(session, batch_size, empty_count) == 0:
-                if interval != 0:
-                    time.sleep(interval)
-                else:
-                    break
+            if fix_address(session, args.batch, empty_count) == 0:
+                # all recoreds are fixed.
+                break
             else:
                 # commit at end of each batch.
                 logging.info("saving...")
                 session.commit()
 
+
+def main():
+    fix_empty_records()
+    if args.interval != 0:
+        loop_timer = Timer(args.interval, main)
+        loop_timer.start()
+
+
 if __name__ == '__main__':
-    process()
+    main()
