@@ -539,7 +539,6 @@ def get_max_update_time():
             .scalar()
 
 
-
 def main():
     if args.mode == 0 or args.mode == 2:
         fix_empty_records()
