@@ -13,6 +13,7 @@ from threading import Timer
 
 logging.basicConfig(level=logging.INFO)
 
+
 def handler(signum, frame):
     '''Contrl-C handler.'''
     logging.info("Ctrl-C pressed, exit.")
@@ -30,7 +31,8 @@ class EnvDefault(argparse.Action):
             default = os.environ[envvar]
         if required and default:
             required = False
-        super(EnvDefault, self).__init__(default=default, required=required,
+        super(EnvDefault, self).__init__(default=default,
+                                         required=required,
                                          **kwargs)
 
     def __call__(self, parser, namespace, values, option_string=None):
@@ -38,27 +40,94 @@ class EnvDefault(argparse.Action):
 
 
 parser = argparse.ArgumentParser(description='Usage of address fixer.')
-parser.add_argument("-u", "--user", required=True, type=str,
-                    action=EnvDefault, envvar="DB_USER", help="db user name(DB_USER).")
-parser.add_argument("-p", "--password", required=True, type=str,
-                    action=EnvDefault, envvar="DB_PASSWD", help="db password(DB_PASSWD).")
-parser.add_argument("-H", "--host", required=True, type=str, action=EnvDefault,
-                    envvar="DB_HOST", help="db host name or ip address(DB_HOST).")
-parser.add_argument("-P", "--port", required=True, type=str,
-                    action=EnvDefault, envvar="DB_PORT", help="db port(DB_PORT).")
-parser.add_argument("-d", "--dbname", required=True, type=str,
-                    action=EnvDefault, envvar="DB_NAME", help="db name(DB_NAME).")
-parser.add_argument("-b", "--batch", required=False, type=int, default=10,
-                    action=EnvDefault, envvar="BATCH", help="batch size for one loop(BATCH).")
-parser.add_argument("-t", "--timeout", required=False, type=int, default=5, action=EnvDefault,
-                    envvar="HTTP_TIMEOUT", help="http request timeout(s)(HTTP_TIMEOUT).")
-parser.add_argument("-r", "--retry", required=False, type=int, default=5,
-                    action=EnvDefault, envvar="HTTP_RETRY", help="http request max retries(HTTP_RETRY).")
-parser.add_argument("-i", "--interval", required=False, type=int, default=0, action=EnvDefault, envvar="INTERVAL",
-                    help="if value not 0, run in infinity mode, fix record in every interval seconds(INTERVAL).")
-parser.add_argument("-m", "--mode", required=False, type=int, default=0, action=EnvDefault, envvar="MODE",
-                    help="run mode: 0 -> fix empty record; 1 -> update address by amap; 2 -> do both(MODE).")
-parser.add_argument("-k", "--key", required=False, type=str, default='', action=EnvDefault, envvar="KEY",
+parser.add_argument("-u",
+                    "--user",
+                    required=True,
+                    type=str,
+                    action=EnvDefault,
+                    envvar="DB_USER",
+                    help="db user name(DB_USER).")
+parser.add_argument("-p",
+                    "--password",
+                    required=True,
+                    type=str,
+                    action=EnvDefault,
+                    envvar="DB_PASSWD",
+                    help="db password(DB_PASSWD).")
+parser.add_argument("-H",
+                    "--host",
+                    required=True,
+                    type=str,
+                    action=EnvDefault,
+                    envvar="DB_HOST",
+                    help="db host name or ip address(DB_HOST).")
+parser.add_argument("-P",
+                    "--port",
+                    required=True,
+                    type=str,
+                    action=EnvDefault,
+                    envvar="DB_PORT",
+                    help="db port(DB_PORT).")
+parser.add_argument("-d",
+                    "--dbname",
+                    required=True,
+                    type=str,
+                    action=EnvDefault,
+                    envvar="DB_NAME",
+                    help="db name(DB_NAME).")
+parser.add_argument("-b",
+                    "--batch",
+                    required=False,
+                    type=int,
+                    default=10,
+                    action=EnvDefault,
+                    envvar="BATCH",
+                    help="batch size for one loop(BATCH).")
+parser.add_argument("-t",
+                    "--timeout",
+                    required=False,
+                    type=int,
+                    default=5,
+                    action=EnvDefault,
+                    envvar="HTTP_TIMEOUT",
+                    help="http request timeout(s)(HTTP_TIMEOUT).")
+parser.add_argument("-r",
+                    "--retry",
+                    required=False,
+                    type=int,
+                    default=5,
+                    action=EnvDefault,
+                    envvar="HTTP_RETRY",
+                    help="http request max retries(HTTP_RETRY).")
+parser.add_argument(
+    "-i",
+    "--interval",
+    required=False,
+    type=int,
+    default=0,
+    action=EnvDefault,
+    envvar="INTERVAL",
+    help=
+    "if value not 0, run in infinity mode, fix record in every interval seconds(INTERVAL)."
+)
+parser.add_argument(
+    "-m",
+    "--mode",
+    required=False,
+    type=int,
+    default=0,
+    action=EnvDefault,
+    envvar="MODE",
+    help=
+    "run mode: 0 -> fix empty record; 1 -> update address by amap; 2 -> do both(MODE)."
+)
+parser.add_argument("-k",
+                    "--key",
+                    required=False,
+                    type=str,
+                    default='',
+                    action=EnvDefault,
+                    envvar="KEY",
                     help="API key for calling amap(KEY).")
 
 args = parser.parse_args()
@@ -69,8 +138,8 @@ def custom_json_dumps(d):
     return d
 
 
-conn_str = "postgresql://%s:%s@%s:%s/%s" % (
-    args.user, args.password, args.host, args.port, args.dbname)
+conn_str = "postgresql://%s:%s@%s:%s/%s" % (args.user, args.password,
+                                            args.host, args.port, args.dbname)
 engine = create_engine(conn_str, json_serializer=custom_json_dumps, echo=False)
 
 # open street map api.
@@ -92,80 +161,35 @@ Positions = Base.classes.positions
 Addresses = Base.classes.addresses
 
 # reference to teslamate's source code, get address value from multiple keys.
-house_number_aliases = [
-    'house_number',
-    'street_number'
-]
+house_number_aliases = ['house_number', 'street_number']
 
 road_aliases = [
-    "road",
-    "footway",
-    "street",
-    "street_name",
-    "residential",
-    "path",
-    "pedestrian",
-    "road_reference",
-    "road_reference_intl",
-    "square",
-    "place"
+    "road", "footway", "street", "street_name", "residential", "path",
+    "pedestrian", "road_reference", "road_reference_intl", "square", "place"
 ]
 
 neighborhood_aliases = [
-    "neighbourhood",
-    "suburb",
-    "city_district",
-    "district",
-    "quarter",
-    "borough",
-    "city_block",
-    "residential",
-    "commercial",
-    "houses",
-    "subdistrict",
-    "subdivision",
-    "ward"
+    "neighbourhood", "suburb", "city_district", "district", "quarter",
+    "borough", "city_block", "residential", "commercial", "houses",
+    "subdistrict", "subdivision", "ward"
 ]
 
 municipality_aliases = [
-    "municipality",
-    "local_administrative_area",
-    "subcounty"
+    "municipality", "local_administrative_area", "subcounty"
 ]
 
-village_aliases = [
-    "village",
-    "municipality",
-    "hamlet",
-    "locality",
-    "croft"
-]
+village_aliases = ["village", "municipality", "hamlet", "locality", "croft"]
 
-city_aliases = [
-    "city",
-    "town",
-    "township"
-]
+city_aliases = ["city", "town", "township"]
 
 city_aliases.extend(village_aliases)
 city_aliases.extend(municipality_aliases)
 
-county_aliases = [
-    "county",
-    "county_code",
-    "department"
-]
+county_aliases = ["county", "county_code", "department"]
 
-state_aliases = [
-    'state',
-    'province',
-    'state_code'
-]
+state_aliases = ['state', 'province', 'state_code']
 
-country_aliases = [
-    'country',
-    'country_name'
-]
+country_aliases = ['country', 'country_name']
 
 
 def get_address_str(address, addr_keys):
@@ -217,8 +241,9 @@ def http_request(url):
     try:
         response = http_session.get(url=url, timeout=args.timeout)
         if response.status_code != requests.codes.ok:
-            logging.error("Http request failed by url: %s, code: %d, body: %s" % (
-                url, response.status_code, response.text))
+            logging.error(
+                "Http request failed by url: %s, code: %d, body: %s" %
+                (url, response.status_code, response.text))
             return None
         raw = response.text
         return raw
@@ -229,8 +254,7 @@ def http_request(url):
 
 def get_address_in_db(session, osm_id):
     '''select address from db, get address id which just added.'''
-    return session.query(Addresses).filter(
-        Addresses.osm_id == osm_id).first()
+    return session.query(Addresses).filter(Addresses.osm_id == osm_id).first()
 
 
 def add_osm_address(session, osm_address, raw):
@@ -244,14 +268,17 @@ def add_osm_address(session, osm_address, raw):
             latitude=osm_address['lat'],
             longitude=osm_address['lon'],
             name=get_address_name(osm_address),
-            house_number=get_address_str(osm_address['address'], house_number_aliases),
+            house_number=get_address_str(osm_address['address'],
+                                         house_number_aliases),
             road=get_address_str(osm_address['address'], road_aliases),
-            neighbourhood=get_address_str(osm_address['address'], neighborhood_aliases),
+            neighbourhood=get_address_str(osm_address['address'],
+                                          neighborhood_aliases),
             city=get_address_str(osm_address['address'], city_aliases),
             county=get_address_str(osm_address['address'], county_aliases),
             postcode=get_address_str(osm_address['address'], ['postcode']),
             state=get_address_str(osm_address['address'], state_aliases),
-            state_district=get_address_str(osm_address['address'], ['state_district']),
+            state_district=get_address_str(osm_address['address'],
+                                           ['state_district']),
             country=get_address_str(osm_address['address'], country_aliases),
             raw=raw,
             inserted_at=datetime.now().replace(microsecond=0),
@@ -306,8 +333,7 @@ def fix_address(session, batch_size, empty_count):
 
     # processing drives.
     for empty_drive_address in empty_drive_addresses:
-        logging.info("processing drive address (%d left)" %
-                     (empty_count))
+        logging.info("processing drive address (%d left)" % (empty_count))
 
         # get positions.
         start_position_id = empty_drive_address.start_position_id
@@ -316,8 +342,7 @@ def fix_address(session, batch_size, empty_count):
         end_position = get_position(session, end_position_id)
 
         # get addresses.
-        start_address_id, start_address = get_address(
-            session, start_position)
+        start_address_id, start_address = get_address(session, start_position)
         end_address_id, end_address = get_address(session, end_position)
         if start_address_id is None or end_address_id is None:
             continue
@@ -333,8 +358,7 @@ def fix_address(session, batch_size, empty_count):
 
     # processing charging.
     for empty_charging_address in empty_charging_addresses:
-        logging.info("processing charging address (%d left)" %
-                     (empty_count))
+        logging.info("processing charging address (%d left)" % (empty_count))
 
         # get position.
         position_id = empty_charging_address.position_id
@@ -424,13 +448,22 @@ def get_field(find, keys):
 
 def update_address_in_db(need_update_address, address_details):
     # parse response.
-    country = get_field(address_details, ['regeocode', 'addressComponent', 'country'])
-    province = get_field(address_details, ['regeocode', 'addressComponent', 'province'])
-    city = get_field(address_details, ['regeocode', 'addressComponent', 'city'])
-    township = get_field(address_details, ['regeocode', 'addressComponent', 'township'])
-    display_name = get_field(address_details, ['regeocode', 'formatted_address'])
-    neighborhood = get_field(address_details, ['regeocode', 'addressComponent', 'neighborhood', 'name'])
-    street_number = get_field(address_details, ['regeocode', 'addressComponent', 'streetNumber', 'number'])
+    country = get_field(address_details,
+                        ['regeocode', 'addressComponent', 'country'])
+    province = get_field(address_details,
+                         ['regeocode', 'addressComponent', 'province'])
+    city = get_field(address_details,
+                     ['regeocode', 'addressComponent', 'city'])
+    township = get_field(address_details,
+                         ['regeocode', 'addressComponent', 'township'])
+    display_name = get_field(address_details,
+                             ['regeocode', 'formatted_address'])
+    neighborhood = get_field(
+        address_details,
+        ['regeocode', 'addressComponent', 'neighborhood', 'name'])
+    street_number = get_field(
+        address_details,
+        ['regeocode', 'addressComponent', 'streetNumber', 'number'])
     road = get_field(address_details, ['regeocode', 'roads', 0, 'name'])
     name = get_field(address_details, ['regeocode', 'aois', 0, 'name'])
     if len(name) == 0:
