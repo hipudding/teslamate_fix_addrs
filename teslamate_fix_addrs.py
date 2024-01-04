@@ -1,6 +1,6 @@
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine, or_
+from sqlalchemy import create_engine, or_, func
 import requests
 from requests.adapters import HTTPAdapter
 import json
@@ -13,11 +13,10 @@ from threading import Timer
 
 logging.basicConfig(level=logging.INFO)
 
-
 def handler(signum, frame):
     '''Contrl-C handler.'''
     logging.info("Ctrl-C pressed, exit.")
-    exit(0)
+    os._exit(0)
 
 
 signal.signal(signal.SIGINT, handler)
@@ -57,6 +56,10 @@ parser.add_argument("-r", "--retry", required=False, type=int, default=5,
                     action=EnvDefault, envvar="HTTP_RETRY", help="http request max retries(HTTP_RETRY).")
 parser.add_argument("-i", "--interval", required=False, type=int, default=0, action=EnvDefault, envvar="INTERVAL",
                     help="if value not 0, run in infinity mode, fix record in every interval seconds(INTERVAL).")
+parser.add_argument("-m", "--mode", required=False, type=int, default=0, action=EnvDefault, envvar="MODE",
+                    help="run mode: 0 -> fix empty record; 1 -> update address by amap; 2 -> do both(MODE).")
+parser.add_argument("-k", "--key", required=False, type=str, default='', action=EnvDefault, envvar="KEY",
+                    help="API key for calling amap(KEY).")
 
 args = parser.parse_args()
 
@@ -72,6 +75,13 @@ engine = create_engine(conn_str, json_serializer=custom_json_dumps, echo=False)
 
 # open street map api.
 osm_resolve_url = "https://nominatim.openstreetmap.org/reverse?lat=%.6f&lon=%.6f&format=jsonv2&addressdetails=1&extratags=1&namedetails=1&zoom=18"
+
+# amap api.
+amap_coordinate_transformation_url = "https://restapi.amap.com/v3/assistant/coordinate/convert?key=%s&coordsys=gps&output=json&locations=%s,%s"
+amap_resolve_url = "https://restapi.amap.com/v3/geocode/regeo?key=%s&output=json&location=%s,%s&poitype=all&extensions=all"
+
+# last updated record datetime.
+last_update_time = datetime.min
 
 # reflact Objects from db tables.
 Base = automap_base()
@@ -101,7 +111,7 @@ road_aliases = [
     "place"
 ]
 
-neighbourhood_aliases = [
+neighborhood_aliases = [
     "neighbourhood",
     "suburb",
     "city_district",
@@ -199,21 +209,22 @@ def get_position(session, position_id):
     return position
 
 
-def get_osm_address_info(position):
-    '''get address by position, calling open street map api.'''
+def http_request(url):
+    '''get response by calling map api.'''
     http_session = requests.Session()
     http_session.mount('http://', HTTPAdapter(max_retries=args.retry))
     http_session.mount('https://', HTTPAdapter(max_retries=args.retry))
-    url = osm_resolve_url % (position.latitude, position.longitude)
     try:
-        response = http_session.get(url=url, timeout=args.timeout).text
+        response = http_session.get(url=url, timeout=args.timeout)
+        if response.status_code != requests.codes.ok:
+            logging.error("Http request failed by url: %s, code: %d, body: %s" % (
+                url, response.status_code, response.text))
+            return None
+        raw = response.text
+        return raw
     except:
-        logging.error("Can't get address, position: latitude: %.6f, longitude: %.6f" % (
-            position.latitude, position.longitude))
-        logging.error("Url = %s" % url)
-        return None, None
-    osm_address = json.loads(response)
-    return osm_address, response
+        logging.error("Http request exception by url: %s" % (url))
+        return None
 
 
 def get_address_in_db(session, osm_id):
@@ -226,28 +237,28 @@ def add_osm_address(session, osm_address, raw):
     '''add osm address to db.'''
     exist_address = get_address_in_db(session, osm_address['osm_id'])
     if exist_address is None:
-        session.add(Addresses(
+        logging.info("oms id = %d is not exist!" % osm_address['osm_id'])
+    if exist_address is None:
+        address = Addresses(
             display_name=osm_address['display_name'],
             latitude=osm_address['lat'],
             longitude=osm_address['lon'],
             name=get_address_name(osm_address),
-            house_number=get_address_str(
-                osm_address['address'], house_number_aliases),
+            house_number=get_address_str(osm_address['address'], house_number_aliases),
             road=get_address_str(osm_address['address'], road_aliases),
-            neighbourhood=get_address_str(
-                osm_address['address'], neighbourhood_aliases),
+            neighbourhood=get_address_str(osm_address['address'], neighborhood_aliases),
             city=get_address_str(osm_address['address'], city_aliases),
             county=get_address_str(osm_address['address'], county_aliases),
             postcode=get_address_str(osm_address['address'], ['postcode']),
             state=get_address_str(osm_address['address'], state_aliases),
-            state_district=get_address_str(
-                osm_address['address'], ['state_district']),
+            state_district=get_address_str(osm_address['address'], ['state_district']),
             country=get_address_str(osm_address['address'], country_aliases),
             raw=raw,
-            inserted_at=datetime.now(),
-            updated_at=datetime.now(),
+            inserted_at=datetime.now().replace(microsecond=0),
+            updated_at=datetime.now().replace(microsecond=0),
             osm_id=osm_address['osm_id'],
-            osm_type=osm_address['osm_type']))
+            osm_type=osm_address['osm_type'])
+        session.add(address)
         logging.info("address added: %s." % osm_address['display_name'])
     else:
         logging.info("address is already exist: %d, %s." %
@@ -259,7 +270,12 @@ def get_address(session, position):
     return address id and display_name by position id. 
     Address will add into db if not exists.
     '''
-    osm_address, raw = get_osm_address_info(position)
+    url = osm_resolve_url % (position.latitude, position.longitude)
+    raw = http_request(url)
+    if raw is None:
+        return None, None
+
+    osm_address = json.loads(raw)
     if osm_address == None:
         return None, None
 
@@ -360,7 +376,7 @@ def fix_empty_records():
     # for low memory devices.
     while True:
         with Session(engine) as session:
-            logging.info("checking...")
+            logging.info("checking empty records...")
             empty_count = get_empty_record_count(session)
             if fix_address(session, args.batch, empty_count) == 0:
                 # all recoreds are fixed.
@@ -371,9 +387,172 @@ def fix_empty_records():
                 session.commit()
 
 
+def get_update_record_count(session):
+    # Determine whether the record needs to be updated based on whether there is a comma.
+    # record last updated time to save cpu time.
+    need_update_count = session\
+        .query(Addresses.id)\
+        .filter(Addresses.updated_at > last_update_time)\
+        .filter(Addresses.display_name.like('%,%'))\
+        .count()
+    return need_update_count
+
+
+def get_field(find, keys):
+    '''get field from a dict object'''
+    item = find
+    for key in keys:
+        if isinstance(key, str):
+            if key in item:
+                item = item[key]
+            else:
+                return ''
+        elif isinstance(key, int):
+            if len(item) > 0:
+                item = item[key]
+            else:
+                return ''
+    # we should have find address str here.
+    if not isinstance(item, str):
+        # some address will be empty list.
+        if len(item) == 0:
+            return ''
+        logging.fatal("key error when parse amap response.")
+        assert (False)
+    return item
+
+
+def update_address_in_db(need_update_address, address_details):
+    # parse response.
+    country = get_field(address_details, ['regeocode', 'addressComponent', 'country'])
+    province = get_field(address_details, ['regeocode', 'addressComponent', 'province'])
+    city = get_field(address_details, ['regeocode', 'addressComponent', 'city'])
+    township = get_field(address_details, ['regeocode', 'addressComponent', 'township'])
+    display_name = get_field(address_details, ['regeocode', 'formatted_address'])
+    neighborhood = get_field(address_details, ['regeocode', 'addressComponent', 'neighborhood', 'name'])
+    street_number = get_field(address_details, ['regeocode', 'addressComponent', 'streetNumber', 'number'])
+    road = get_field(address_details, ['regeocode', 'roads', 0, 'name'])
+    name = get_field(address_details, ['regeocode', 'aois', 0, 'name'])
+    if len(name) == 0:
+        name = get_field(address_details, ['regeocode', 'pois', 0, 'name'])
+    if len(name) == 0:
+        name = get_field(address_details, ['regeocode', 'roads', 0, 'name'])
+
+    # update db record.
+    logging.info("update address from %s to %s" %
+                 (need_update_address.display_name, display_name))
+    need_update_address.state = province
+    need_update_address.county = township
+    need_update_address.city = city
+    need_update_address.house_number = street_number
+    need_update_address.display_name = display_name
+    need_update_address.country = country
+    need_update_address.updated_at = datetime.now().replace(microsecond=0)
+
+    # if some address is empty, do not update them.
+    if len(road) > 0:
+        need_update_address.road = road
+
+    if len(name) > 0:
+        need_update_address.name = name
+
+    if len(neighborhood) > 0:
+        need_update_address.neighbourhood = neighborhood
+
+
+def request_amap_api(url):
+    '''request from amap api and loads as dict'''
+    response = http_request(url)
+    if response is None:
+        return None
+
+    response_dict = json.loads(response)
+    if response_dict is None or response_dict['status'] != '1':
+        logging.error("request amap api error: %s" % response)
+        return None
+    return response_dict
+
+
+def update_address(session, batch_size, need_update_count):
+    '''update address str by amap api.'''
+    if len(args.key) == 0:
+        logging.error("Amap key is not set.")
+        return
+
+    # get all records which display name ccontains comma.
+    # record last update time to save cpu time.
+    need_update_addresses = session\
+        .query(Addresses)\
+        .filter(Addresses.updated_at > last_update_time)\
+        .filter(Addresses.display_name.like('%,%'))\
+        .limit(batch_size)\
+        .all()
+
+    for need_update_address in need_update_addresses:
+        logging.info("processing update address (%d left)" %
+                     (need_update_count))
+        gps_lat = need_update_address.latitude
+        gps_lon = need_update_address.longitude
+
+        # transform coordinate
+        url = amap_coordinate_transformation_url % (args.key, gps_lon, gps_lat)
+        transformed_coordinate = request_amap_api(url)
+        if transformed_coordinate is None:
+            continue
+
+        locations = transformed_coordinate['locations']
+        amap_lon = round(float(locations.split(',')[0]), 6)
+        amap_lat = round(float(locations.split(',')[1]), 6)
+
+        # get address details
+        url = amap_resolve_url % (args.key, amap_lon, amap_lat)
+        address_details = request_amap_api(url)
+        if address_details is None:
+            continue
+
+        # update db
+        update_address_in_db(need_update_address, address_details)
+
+        need_update_count -= 1
+
+    return len(need_update_addresses)
+
+
+def update_address_by_amap():
+    while True:
+        with Session(engine) as session:
+            logging.info("updating address by amap...")
+            need_update_count = get_update_record_count(session)
+            if update_address(session, args.batch, need_update_count) == 0:
+                # all recoreds are updated.
+                break
+            else:
+                # commit at end of each batch.
+                logging.info("saving...")
+                session.commit()
+
+
+def get_max_update_time():
+    with Session(engine) as session:
+        return session\
+            .query(func.max(Addresses.updated_at))\
+            .scalar()
+
+
+
 def main():
-    fix_empty_records()
-    if args.interval != 0:
+    if args.mode == 0 or args.mode == 2:
+        fix_empty_records()
+    if args.mode == 1 or args.mode == 2:
+        update_address_by_amap()
+        global last_update_time
+        last_update_time = get_max_update_time()
+
+    # wrong mode, do nothing and exit.
+    if args.mode < 0 or args.mode > 2:
+        logging.info("nothing to do, bye.")
+    # if interval is set, run in infinity mode.
+    elif args.interval != 0:
         loop_timer = Timer(args.interval, main)
         loop_timer.start()
 

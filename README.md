@@ -5,11 +5,9 @@ Fix blank address in teslamate.
 **Thanks [@WayneJz](https://github.com/WayneJz) for the inspiration. See [teslamate-addr-fix](https://github.com/WayneJz/teslamate-addr-fix), address fixer written by go.**
 
 
-
 ## Notice
 
 **Must create a [backup](https://docs.teslamate.org/docs/maintenance/backup_restore) before doing this.**
-
 
 
 ## Pre-requisite
@@ -19,8 +17,10 @@ Fix blank address in teslamate.
 - You have access to openstreetmap.org **via your HTTP proxy**
 
   
-
 ## Guides
+This tool has two main functions:
+* fill empty address.
+* update address by [amap api](https://lbs.amap.com/api/webservice/summary), you can apply your own key [here](https://lbs.amap.com/api/webservice/guide/create-project/get-key).
 
 ### 1. Docker compose
 
@@ -42,8 +42,9 @@ teslamate_fix_addrs:
     - HTTP_TIMEOUT=5
     - HTTP_RETRY=5
     - INTERVAL=5
+    - MODE=0
+    - KEY=
 ```
-
 
 
 ### 2. Run on host
@@ -66,9 +67,9 @@ options:
   -t TIMEOUT, --timeout TIMEOUT     http request timeout(s)(HTTP_TIMEOUT).
   -r RETRY, --retry RETRY           http request max retries(HTTP_RETRY).
   -i INTERVAL, --interval INTERVAL  if value not 0, run in infinity mode, fix record in every interval seconds(INTERVAL).
+  -m MODE, --mode MODE              run mode: 0 -> fix empty record; 1 -> update address by amap; 2 -> do both(MODE).
+  -k KEY, --key KEY                 API key for calling amap(KEY).
 ```
-
-
 
 ## Disclaimer
 
