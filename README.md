@@ -133,6 +133,7 @@ If you installed teslamate by docker, you can choose alternative solutions.
        - HTTP_RETRY=5
        - INTERVAL=10
        - MODE=0
+       - SINCE=2024-01-24
        - KEY=
    ```
 
@@ -160,6 +161,7 @@ teslamate_fix_addrs:
     - HTTP_RETRY=5
     - INTERVAL=5
     - MODE=0
+    - SINCE=2024-01-24
     - KEY=
 ```
 
@@ -185,6 +187,7 @@ options:
   -i INTERVAL, --interval INTERVAL  if value not 0, run in infinity mode, fix record in every interval seconds(INTERVAL).
   -m MODE, --mode MODE              run mode: 0 -> fix empty record; 1 -> update address by amap; 2 -> do both(MODE).
   -k KEY, --key KEY                 API key for calling amap(KEY).
+  -s SINCE, --since SINCE           Update from specified date(YYYY-mm-dd).
 ```
 
 
@@ -239,6 +242,7 @@ Worry about damaging existing data？ You can have a try in sandbox.
        - HTTP_RETRY=5
        - INTERVAL=10
        - MODE=0
+       - SINCE=2024-01-24
        - KEY=
    
    volumes:

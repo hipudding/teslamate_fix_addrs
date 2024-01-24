@@ -130,6 +130,15 @@ parser.add_argument("-k",
                     envvar="KEY",
                     help="API key for calling amap(KEY).")
 
+parser.add_argument("-s",
+                    "--since",
+                    required=False,
+                    type=lambda d: datetime.strptime(d, '%Y-%m-%d'),
+                    default=datetime.min,
+                    action=EnvDefault,
+                    envvar="SINCE",
+                    help="Update from specified date(YYYY-mm-dd).")
+
 args = parser.parse_args()
 
 
@@ -149,8 +158,8 @@ osm_resolve_url = "https://nominatim.openstreetmap.org/reverse?lat=%.6f&lon=%.6f
 amap_coordinate_transformation_url = "https://restapi.amap.com/v3/assistant/coordinate/convert?key=%s&coordsys=gps&output=json&locations=%s,%s"
 amap_resolve_url = "https://restapi.amap.com/v3/geocode/regeo?key=%s&output=json&location=%s,%s&poitype=all&extensions=all"
 
-# last updated record datetime.
-last_update_time = datetime.min
+# last updated record id.
+last_update_id = 0
 
 # reflact Objects from db tables.
 Base = automap_base()
@@ -411,17 +420,6 @@ def fix_empty_records():
                 session.commit()
 
 
-def get_update_record_count(session):
-    # Determine whether the record needs to be updated based on whether there is a comma.
-    # record last updated time to save cpu time.
-    need_update_count = session\
-        .query(Addresses.id)\
-        .filter(Addresses.updated_at > last_update_time)\
-        .filter(Addresses.display_name.like('%,%'))\
-        .count()
-    return need_update_count
-
-
 def get_field(find, keys):
     '''get field from a dict object'''
     item = find
@@ -452,8 +450,15 @@ def update_address_in_db(need_update_address, address_details):
                         ['regeocode', 'addressComponent', 'country'])
     province = get_field(address_details,
                          ['regeocode', 'addressComponent', 'province'])
-    city = get_field(address_details,
-                     ['regeocode', 'addressComponent', 'city'])
+
+    municipality = province in ['北京市', '天津市', '上海市', '重庆市']
+    if municipality:
+        city = province + get_field(
+            address_details, ['regeocode', 'addressComponent', 'district'])
+    else:
+        city = get_field(address_details,
+                         ['regeocode', 'addressComponent', 'city'])
+
     township = get_field(address_details,
                          ['regeocode', 'addressComponent', 'township'])
     display_name = get_field(address_details,
@@ -482,6 +487,13 @@ def update_address_in_db(need_update_address, address_details):
     need_update_address.country = country
     need_update_address.updated_at = datetime.now().replace(microsecond=0)
 
+    # record last processed record id, skip records which id less than this.
+    # assume that address record will not updated.
+    # if language changed, teslamate will update all addressed, remember to
+    # restart me to re-process all records.
+    global last_update_id
+    last_update_id = need_update_address.id
+
     # if some address is empty, do not update them.
     if len(road) > 0:
         need_update_address.road = road
@@ -506,20 +518,33 @@ def request_amap_api(url):
     return response_dict
 
 
+def get_update_record_count(session):
+    # record last updated id to save cpu time.
+    return session\
+        .query(Addresses)\
+        .filter(Addresses.updated_at >= args.since)\
+        .filter(Addresses.id > last_update_id)\
+        .count()
+
+
+def get_need_update_addresses(session, batch_size):
+    # record last update id to save cpu time.
+    return session\
+        .query(Addresses)\
+        .filter(Addresses.updated_at >= args.since)\
+        .filter(Addresses.id > last_update_id)\
+        .order_by(Addresses.id)\
+        .limit(batch_size)\
+        .all()
+
+
 def update_address(session, batch_size, need_update_count):
     '''update address str by amap api.'''
     if len(args.key) == 0:
         logging.error("Amap key is not set.")
-        return
+        return 0
 
-    # get all records which display name ccontains comma.
-    # record last update time to save cpu time.
-    need_update_addresses = session\
-        .query(Addresses)\
-        .filter(Addresses.updated_at > last_update_time)\
-        .filter(Addresses.display_name.like('%,%'))\
-        .limit(batch_size)\
-        .all()
+    need_update_addresses = get_need_update_addresses(session, batch_size)
 
     for need_update_address in need_update_addresses:
         logging.info("processing update address (%d left)" %
@@ -565,20 +590,11 @@ def update_address_by_amap():
                 session.commit()
 
 
-def get_max_update_time():
-    with Session(engine) as session:
-        return session\
-            .query(func.max(Addresses.updated_at))\
-            .scalar()
-
-
 def main():
     if args.mode == 0 or args.mode == 2:
         fix_empty_records()
     if args.mode == 1 or args.mode == 2:
         update_address_by_amap()
-        global last_update_time
-        last_update_time = get_max_update_time()
 
     # wrong mode, do nothing and exit.
     if args.mode < 0 or args.mode > 2:
