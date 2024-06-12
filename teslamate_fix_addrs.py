@@ -138,7 +138,16 @@ parser.add_argument("-s",
                     action=EnvDefault,
                     envvar="SINCE",
                     help="Update from specified date(YYYY-mm-dd).")
-
+parser.add_argument(
+    "-ua",
+    "--user_agent",
+    required=False,
+    type=str,
+    default='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    action=EnvDefault,
+    envvar="USER_AGENT",
+    help="Custom User-Agent for HTTP requests(USER_AGENT)."
+)
 args = parser.parse_args()
 
 
@@ -247,8 +256,12 @@ def http_request(url):
     http_session = requests.Session()
     http_session.mount('http://', HTTPAdapter(max_retries=args.retry))
     http_session.mount('https://', HTTPAdapter(max_retries=args.retry))
+    headers = {
+        'User-Agent': args.user_agent
+    }
+
     try:
-        response = http_session.get(url=url, timeout=args.timeout)
+        response = http_session.get(url=url, timeout=args.timeout, headers=headers)
         if response.status_code != requests.codes.ok:
             logging.error(
                 "Http request failed by url: %s, code: %d, body: %s" %
