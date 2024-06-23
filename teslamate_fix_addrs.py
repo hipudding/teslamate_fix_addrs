@@ -143,7 +143,7 @@ parser.add_argument(
     "--user_agent",
     required=False,
     type=str,
-    default='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    default='teslamate/#v1.29.2',
     action=EnvDefault,
     envvar="USER_AGENT",
     help="Custom User-Agent for HTTP requests(USER_AGENT)."
@@ -334,6 +334,7 @@ def get_address(session, position):
 
 
 def fix_address(session, batch_size, empty_count):
+    processed_count = 0
     # get empty records in drives.
     empty_drive_addresses = session\
         .query(Drives)\
@@ -355,7 +356,7 @@ def fix_address(session, batch_size, empty_count):
 
     # processing drives.
     for empty_drive_address in empty_drive_addresses:
-        logging.info("processing drive address (%d left)" % (empty_count))
+        logging.info("processing drive address (%d left)" % (empty_count - processed_count))
 
         # get positions.
         start_position_id = empty_drive_address.start_position_id
@@ -376,11 +377,11 @@ def fix_address(session, batch_size, empty_count):
                      (empty_drive_address.id, start_address))
         logging.info("Changing drives(id = %d) end address to %s" %
                      (empty_drive_address.id, end_address))
-        empty_count -= 1
+        processed_count += 1
 
     # processing charging.
     for empty_charging_address in empty_charging_addresses:
-        logging.info("processing charging address (%d left)" % (empty_count))
+        logging.info("processing charging address (%d left)" % (empty_count - processed_count))
 
         # get position.
         position_id = empty_charging_address.position_id
@@ -395,10 +396,10 @@ def fix_address(session, batch_size, empty_count):
         empty_charging_address.address_id = address_id
         logging.info("Changing charging(id = %d) to %s" %
                      (empty_charging_address.id, address))
-        empty_count -= 1
+        processed_count += 1
 
     # records processed.
-    return (len(empty_drive_addresses) + len(empty_charging_addresses))
+    return processed_count
 
 
 def get_empty_record_count(session):
@@ -553,6 +554,7 @@ def get_need_update_addresses(session, batch_size):
 
 def update_address(session, batch_size, need_update_count):
     '''update address str by amap api.'''
+    processed_count = 0
     if len(args.key) == 0:
         logging.error("Amap key is not set.")
         return 0
@@ -561,7 +563,7 @@ def update_address(session, batch_size, need_update_count):
 
     for need_update_address in need_update_addresses:
         logging.info("processing update address (%d left)" %
-                     (need_update_count))
+                     (need_update_count - processed_count))
         gps_lat = need_update_address.latitude
         gps_lon = need_update_address.longitude
 
@@ -584,9 +586,9 @@ def update_address(session, batch_size, need_update_count):
         # update db
         update_address_in_db(need_update_address, address_details)
 
-        need_update_count -= 1
+        processed_count += 1
 
-    return len(need_update_addresses)
+    return processed_count
 
 
 def update_address_by_amap():
