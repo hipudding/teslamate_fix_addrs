@@ -83,6 +83,10 @@ If open street map is baned in your region, you need a proxy to get access to it
 * HTTP_PROXY=http://proxy.ip:port
 * HTTPS_PROXY=http://proxy.ip:port
 
+If you use the socks protocol proxy, set environment variable:
+* HTTP_PROXY=socks5://proxy.ip:port
+* HTTPS_PROXY=socks5://proxy.ip:port 
+
 
 
 ### Get access to DB
