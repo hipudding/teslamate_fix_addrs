@@ -11,7 +11,12 @@ import os
 import signal
 from threading import Timer
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'  # 设置时间格式
+)
+
 
 
 def handler(signum, frame):
