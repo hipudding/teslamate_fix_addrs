@@ -1,6 +1,7 @@
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, or_, func
+from sqlalchemy.engine.url import URL
 import requests
 from requests.adapters import HTTPAdapter
 import json
@@ -160,10 +161,16 @@ def custom_json_dumps(d):
     '''do not add backslash in json.'''
     return d
 
+conn_url = URL.create(
+    drivername="postgresql",
+    username=args.user,
+    password=args.password,
+    host=args.host,
+    port=args.port,
+    database=args.dbname
+)
 
-conn_str = "postgresql://%s:%s@%s:%s/%s" % (args.user, args.password,
-                                            args.host, args.port, args.dbname)
-engine = create_engine(conn_str, json_serializer=custom_json_dumps, echo=False)
+engine = create_engine(conn_url, json_serializer=custom_json_dumps, echo=False)
 
 # open street map api.
 osm_resolve_url = "https://nominatim.openstreetmap.org/reverse?lat=%.6f&lon=%.6f&format=jsonv2&addressdetails=1&extratags=1&namedetails=1&zoom=18"
