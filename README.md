@@ -123,7 +123,7 @@ If you installed teslamate by docker, you can choose alternative solutions.
          - POSTGRES_DB=teslamate
    
      teslamate_fix_addrs:
-       image: huafengchun/teslamate_fix_addrs:latest
+       image: hipudding/teslamate_fix_addrs:latest
        container_name: teslmate_fix_addrs
        restart: unless-stopped
        environment:
@@ -152,7 +152,7 @@ If you installed teslamate by docker, you can choose alternative solutions.
 
 ```
 teslamate_fix_addrs:
-    image: huafengchun/teslamate_fix_addrs:latest
+    image: hipudding/teslamate_fix_addrs:latest
     container_name: teslmate_fix_addrs
     restart: unless-stopped
     environment:
@@ -235,7 +235,7 @@ Worry about damaging existing data？ You can have a try in sandbox.
          - teslamate-grafana-data:/var/lib/grafana
    
      teslamate_fix_addrs:
-       image: huafengchun/teslamate_fix_addrs:latest
+       image: hipudding/teslamate_fix_addrs:latest
        container_name: teslmate_fix_addrs
        restart: unless-stopped
        environment:
