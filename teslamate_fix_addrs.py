@@ -11,6 +11,7 @@ import argparse
 import os
 import signal
 from threading import Timer
+import time
 
 logging.basicConfig(
     level=logging.INFO,
@@ -549,6 +550,9 @@ def request_amap_api(url):
     response = http_request(url)
     if response is None:
         return None
+    else:
+       # amap limits access frequency
+       time.sleep(0.3)
 
     response_dict = json.loads(response)
     if response_dict is None or response_dict['status'] != '1':
