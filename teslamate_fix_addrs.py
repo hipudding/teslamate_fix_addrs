@@ -269,6 +269,17 @@ class TencentGeocoder(ReverseGeocoder):
             return val
         return default
 
+    @staticmethod
+    def _get_reference_title(reference, *keys):
+        """Return the title of the first present address_reference entry."""
+        for key in keys:
+            entry = reference.get(key)
+            if isinstance(entry, dict):
+                title = entry.get('title')
+                if isinstance(title, str) and title:
+                    return title
+        return ''
+
     def reverse_geocode(self, lat, lng):
         """Call Tencent Maps reverse geocoding API. Returns parsed JSON or None."""
         if not self.config.tencent_key:
@@ -314,6 +325,7 @@ class TencentGeocoder(ReverseGeocoder):
         r = result.get('result', {})
         component = r.get('address_component', {})
         formatted = r.get('formatted_addresses', {})
+        reference = r.get('address_reference', {})
 
         country = self._get_safe(component, 'nation')
         province = self._get_safe(component, 'province')
@@ -321,7 +333,8 @@ class TencentGeocoder(ReverseGeocoder):
         district = self._get_safe(component, 'district')
         street = self._get_safe(component, 'street')
         street_number = self._get_safe(component, 'street_number')
-        neighbourhood = self._get_safe(component, 'neighbourhood')
+        neighbourhood = self._get_reference_title(
+            reference, 'town', 'village')
         display_name = self._get_safe(formatted, 'recommend')
 
         if self.config.short_names and display_name:

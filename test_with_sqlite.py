@@ -319,11 +319,15 @@ def verify_mode3():
         print("  FAILED: osm_id is not unique per address")
         ok = False
 
-    c.execute('SELECT display_name, city, road FROM addresses')
-    for display_name, city, road in c.fetchall():
-        print("    %s | city=%s | road=%s" % (display_name, city, road))
+    c.execute('SELECT display_name, city, road, neighbourhood FROM addresses')
+    for display_name, city, road, neighbourhood in c.fetchall():
+        print("    %s | city=%s | road=%s | neighbourhood=%s" %
+              (display_name, city, road, neighbourhood))
         if not display_name:
             print("  FAILED: display_name is empty")
+            ok = False
+        if not neighbourhood:
+            print("  FAILED: neighbourhood is empty")
             ok = False
 
     conn.close()
