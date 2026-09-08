@@ -18,7 +18,7 @@ Fix empty addresses in teslamate.
 
 - You have teslamate [broken address issue](https://github.com/adriankumpf/teslamate/issues/2956)
 
-- You have access to openstreetmap.org **via your HTTP proxy**
+- You have access to openstreetmap.org **via your HTTP proxy**, or you use mode 3, which resolves addresses through Tencent Maps and never contacts openstreetmap.org
 
 
 ## Guides
@@ -48,13 +48,21 @@ When the program runs in the first round, all addresses will be updated. In subs
 
 `-m` `--mode` or environment `MODE` is used to configure teslamate_fix_addrs' running mode.
 
-* 0: fix empty address only.
+* 0: fix empty address only, resolved by open street map.
 * 1: use Tencent Maps to update address only.
 * 2: do both.
+* 3: fix empty address using Tencent Maps only, open street map is never
+  contacted. Use this if open street map is unreachable from your network.
 
 If you want to update addresses by Tencent Maps, you need to [apply for a key](https://lbs.qq.com/dev/console/application/mine) first, and pass the key value by `-k` `--key` or environment `TENCENT_KEY`. You also need to configure the SK (Secret Key) via `--sk` or environment `TENCENT_SK` for API signature verification.
 
 
+
+### Short names
+
+Tencent Maps returns names like `龙岗区中国邮政葵涌邮政支局(坪葵路西)`, which repeat the district and add a landmark hint in brackets. Set `--short-names` or environment `SHORT_NAMES=1` to store `中国邮政葵涌邮政支局` instead. Nothing is lost, the district is already kept in its own column. Names that would end up empty are left untouched.
+
+Off by default, so existing setups keep the names they have.
 
 ### Infinity mode
 
@@ -79,6 +87,8 @@ All parameters can be passed to teslamate_fix_addrs by command line parameters o
 
 
 ### Proxy
+
+Mode 3 needs no proxy at all, because it resolves addresses through Tencent Maps instead of open street map. The proxy settings below only apply to modes 0 and 2.
 
 If open street map is baned in your region, you need a proxy to get access to it. Set proxy settings by environment values:
 

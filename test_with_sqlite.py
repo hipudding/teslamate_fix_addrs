@@ -3,8 +3,8 @@
 Test script for teslamate_fix_addrs.py using SQLite.
 
 Creates a SQLite database with TeslaMate-compatible tables, inserts test data,
-and runs the program in Mode 0 (OSM fix) and Mode 1 (map API update)
-to verify functionality.
+and runs the program in Mode 0 (OSM fix), Mode 1 (map API update) and
+Mode 3 (map API fix without OSM) to verify functionality.
 """
 
 import sqlite3
@@ -276,6 +276,113 @@ def verify_mode1():
     return all_ok
 
 
+def reset_addresses():
+    """Drop all addresses and unlink them, as if OSM had never run."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('UPDATE drives SET start_address_id = NULL, '
+              'end_address_id = NULL')
+    c.execute('UPDATE charging_processes SET address_id = NULL')
+    c.execute('DELETE FROM addresses')
+    conn.commit()
+    conn.close()
+
+
+def verify_mode3():
+    """Verify Mode 3 results: addresses created by the map API alone."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    print("\n" + "=" * 60)
+    print("Verifying Mode 3 (map API fix, no OSM) results")
+    print("=" * 60)
+
+    ok = True
+
+    c.execute('SELECT COUNT(*) FROM addresses')
+    address_count = c.fetchone()[0]
+    print("  Addresses created: %d (expected %d)" %
+          (address_count, len(POSITIONS)))
+    if address_count != len(POSITIONS):
+        print("  FAILED: expected one address per distinct position")
+        ok = False
+
+    c.execute('SELECT DISTINCT osm_type FROM addresses')
+    osm_types = [row[0] for row in c.fetchall()]
+    print("  osm_type values: %s" % osm_types)
+    if osm_types != ['tencent']:
+        print("  FAILED: addresses should be tagged with the map source")
+        ok = False
+
+    c.execute('SELECT COUNT(DISTINCT osm_id) FROM addresses')
+    if c.fetchone()[0] != address_count:
+        print("  FAILED: osm_id is not unique per address")
+        ok = False
+
+    c.execute('SELECT display_name, city, road, neighbourhood FROM addresses')
+    for display_name, city, road, neighbourhood in c.fetchall():
+        print("    %s | city=%s | road=%s | neighbourhood=%s" %
+              (display_name, city, road, neighbourhood))
+        if not display_name:
+            print("  FAILED: display_name is empty")
+            ok = False
+        if not neighbourhood:
+            print("  FAILED: neighbourhood is empty")
+            ok = False
+
+    conn.close()
+
+    if not check_all_drives_fixed() or not check_all_chargings_fixed():
+        print("  FAILED: some records are still unlinked")
+        ok = False
+
+    if ok:
+        print("  PASSED")
+    return ok
+
+
+UNRESOLVABLE_POSITION = (20.000000, 118.000000)
+
+
+def insert_resolved_address_on_unresolvable_position():
+    """Add a resolved address whose coordinates Tencent cannot resolve."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    lat, lng = UNRESOLVABLE_POSITION
+    c.execute(
+        'INSERT INTO addresses (display_name, latitude, longitude, name, '
+        'road, neighbourhood, city, county, state, country, osm_id, osm_type) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        ('坪山区飞西村西南(深汕路北)', lat, lng, '坪山区飞西村西南(深汕路北)',
+         '深汕路', '坪山街道', '深圳市', '坪山区', '广东省', '中国',
+         999999, 'tencent'))
+    conn.commit()
+    address_id = c.lastrowid
+    conn.close()
+    return address_id
+
+
+def verify_unresolvable_keeps_address(address_id):
+    """Verify an unresolvable response leaves the stored address untouched."""
+    print("\n" + "=" * 60)
+    print("Verifying an unresolvable position does not blank an address")
+    print("=" * 60)
+
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        'SELECT display_name, city, county, state, country, neighbourhood '
+        'FROM addresses WHERE id = ?', (address_id,)).fetchone()
+    conn.close()
+
+    print("    %s" % (row,))
+    ok = all(row)
+    if not ok:
+        print("  FAILED: the address was blanked by an empty response")
+    else:
+        print("  PASSED")
+    return ok
+
+
 def verify_checkpoint():
     """Verify checkpoint file was created and contains expected data."""
     print("\n" + "=" * 60)
@@ -351,8 +458,23 @@ def main():
     print("\nStep 7: Verifying Mode 1 results...")
     mode1_ok = verify_mode1()
 
-    # Step 8: Verify checkpoint
-    print("\nStep 8: Verifying checkpoint...")
+    # Step 8: Run Mode 3 (map API fix without OSM)
+    print("\nStep 8: Running Mode 3 (map API address fix, no OSM)...")
+    reset_addresses()
+    run_program(3, ['--reset-checkpoint'])
+
+    # Step 9: Verify Mode 3
+    print("\nStep 9: Verifying Mode 3 results...")
+    mode3_ok = verify_mode3()
+
+    # Step 10: Run Mode 1 over a position Tencent cannot resolve
+    print("\nStep 10: Running Mode 1 over an unresolvable position...")
+    unresolvable_id = insert_resolved_address_on_unresolvable_position()
+    run_program(1, ['--reset-checkpoint'])
+    unresolvable_ok = verify_unresolvable_keeps_address(unresolvable_id)
+
+    # Step 11: Verify checkpoint
+    print("\nStep 11: Verifying checkpoint...")
     checkpoint_ok = verify_checkpoint()
 
     # Summary
@@ -362,6 +484,8 @@ def main():
     results = [
         ("Mode 0 (OSM fix)", mode0_ok),
         ("Mode 1 (map API update)", mode1_ok),
+        ("Mode 3 (map API fix)", mode3_ok),
+        ("Unresolvable position", unresolvable_ok),
         ("Checkpoint", checkpoint_ok),
     ]
     for name, ok in results:

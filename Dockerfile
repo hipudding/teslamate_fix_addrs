@@ -2,7 +2,7 @@ FROM ubuntu:22.04
 
 RUN mkdir /root/app
 
-RUN apt update && apt install -y python3 python3-pip
+RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y python3 python3-pip tzdata
 
 COPY * /root/app
 
