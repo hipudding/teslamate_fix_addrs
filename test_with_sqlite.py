@@ -341,6 +341,38 @@ def verify_mode3():
     return ok
 
 
+SHORT_NAME_CASES = [
+    ('海淀区中关村方正国际大厦北(北四环西路南)', '海淀区',
+     '中关村方正国际大厦北'),
+    ('黄浦区延安高架路(大世界游乐中心)', '黄浦区', '延安高架路'),
+    ('五华区桔子酒店（昆明高新区店）', '五华区', '桔子酒店（昆明高新区店）'),
+    ('隆阳区全季酒店（保山永昌大道店）', '隆阳区', '全季酒店（保山永昌大道店）'),
+    ('坪山区(飞西村)', '坪山区', '坪山区(飞西村)'),
+]
+
+
+def verify_short_names():
+    """Verify SHORT_NAMES trims locators but keeps a branch name."""
+    print("\n" + "=" * 60)
+    print("Verifying SHORT_NAMES shortening")
+    print("=" * 60)
+
+    sys.path.insert(0, SCRIPT_DIR)
+    from teslamate_fix_addrs import shorten_name
+
+    ok = True
+    for name, district, expected in SHORT_NAME_CASES:
+        actual = shorten_name(name, district)
+        print("    %s -> %s" % (name, actual))
+        if actual != expected:
+            print("  FAILED: expected %s" % expected)
+            ok = False
+
+    if ok:
+        print("  PASSED")
+    return ok
+
+
 UNRESOLVABLE_POSITION = (20.000000, 118.000000)
 
 
@@ -477,6 +509,10 @@ def main():
     print("\nStep 11: Verifying checkpoint...")
     checkpoint_ok = verify_checkpoint()
 
+    # Step 12: Verify SHORT_NAMES shortening
+    print("\nStep 12: Verifying SHORT_NAMES shortening...")
+    short_names_ok = verify_short_names()
+
     # Summary
     print("\n" + "=" * 60)
     print("TEST SUMMARY")
@@ -487,6 +523,7 @@ def main():
         ("Mode 3 (map API fix)", mode3_ok),
         ("Unresolvable position", unresolvable_ok),
         ("Checkpoint", checkpoint_ok),
+        ("SHORT_NAMES shortening", short_names_ok),
     ]
     for name, ok in results:
         print("  %-26s %s" % (name + ":", "PASSED" if ok else "FAILED"))

@@ -60,7 +60,7 @@ If you want to update addresses by Tencent Maps, you need to [apply for a key](h
 
 ### Short names
 
-Tencent Maps returns names like `龙岗区中国邮政葵涌邮政支局(坪葵路西)`, which repeat the district and add a landmark hint in brackets. Set `--short-names` or environment `SHORT_NAMES=1` to store `中国邮政葵涌邮政支局` instead. Nothing is lost, the district is already kept in its own column. Names that would end up empty are left untouched.
+Tencent Maps returns names like `龙岗区中国邮政葵涌邮政支局(坪葵路西)`, which repeat the district and add a landmark hint in brackets. Set `--short-names` or environment `SHORT_NAMES=1` to store `中国邮政葵涌邮政支局` instead. Nothing is lost, the district is already kept in its own column. A bracket that names a branch, like `桔子酒店（昆明高新区店）`, is part of the place name and stays. Names that would end up empty are left untouched.
 
 Off by default, so existing setups keep the names they have.
 

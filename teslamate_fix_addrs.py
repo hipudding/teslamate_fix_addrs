@@ -231,18 +231,23 @@ class ReverseGeocoder:
         raise NotImplementedError
 
 
-TRAILING_PARENTHETICAL = re.compile(r'\s*[（(][^（）()]*[）)]\s*$')
+TRAILING_PARENTHETICAL = re.compile(r'\s*[（(]([^（）()]*)[）)]\s*$')
+BRANCH_NAME_SUFFIXES = ('店',)
 
 
 def shorten_name(name, district):
     '''Drop the leading district and the trailing parenthetical, so names line
-    up with the shorter form Amap returns. Falls back to the original name if
-    nothing would be left.'''
+    up with the shorter form Amap returns. A parenthetical naming a branch
+    (桔子酒店（昆明高新区店）) is part of the place name and stays. Falls back
+    to the original name if nothing would be left.'''
     shortened = name
     if district and shortened.startswith(district):
         shortened = shortened[len(district):]
-    shortened = TRAILING_PARENTHETICAL.sub('', shortened).strip()
-    return shortened or name
+    parenthetical = TRAILING_PARENTHETICAL.search(shortened)
+    if parenthetical and not parenthetical.group(1).endswith(
+            BRANCH_NAME_SUFFIXES):
+        shortened = shortened[:parenthetical.start()]
+    return shortened.strip() or name
 
 
 class TencentGeocoder(ReverseGeocoder):
