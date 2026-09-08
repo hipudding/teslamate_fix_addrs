@@ -341,6 +341,48 @@ def verify_mode3():
     return ok
 
 
+UNRESOLVABLE_POSITION = (20.000000, 118.000000)
+
+
+def insert_resolved_address_on_unresolvable_position():
+    """Add a resolved address whose coordinates Tencent cannot resolve."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    lat, lng = UNRESOLVABLE_POSITION
+    c.execute(
+        'INSERT INTO addresses (display_name, latitude, longitude, name, '
+        'road, neighbourhood, city, county, state, country, osm_id, osm_type) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        ('坪山区飞西村西南(深汕路北)', lat, lng, '坪山区飞西村西南(深汕路北)',
+         '深汕路', '坪山街道', '深圳市', '坪山区', '广东省', '中国',
+         999999, 'tencent'))
+    conn.commit()
+    address_id = c.lastrowid
+    conn.close()
+    return address_id
+
+
+def verify_unresolvable_keeps_address(address_id):
+    """Verify an unresolvable response leaves the stored address untouched."""
+    print("\n" + "=" * 60)
+    print("Verifying an unresolvable position does not blank an address")
+    print("=" * 60)
+
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute(
+        'SELECT display_name, city, county, state, country, neighbourhood '
+        'FROM addresses WHERE id = ?', (address_id,)).fetchone()
+    conn.close()
+
+    print("    %s" % (row,))
+    ok = all(row)
+    if not ok:
+        print("  FAILED: the address was blanked by an empty response")
+    else:
+        print("  PASSED")
+    return ok
+
+
 def verify_checkpoint():
     """Verify checkpoint file was created and contains expected data."""
     print("\n" + "=" * 60)
@@ -425,8 +467,14 @@ def main():
     print("\nStep 9: Verifying Mode 3 results...")
     mode3_ok = verify_mode3()
 
-    # Step 10: Verify checkpoint
-    print("\nStep 10: Verifying checkpoint...")
+    # Step 10: Run Mode 1 over a position Tencent cannot resolve
+    print("\nStep 10: Running Mode 1 over an unresolvable position...")
+    unresolvable_id = insert_resolved_address_on_unresolvable_position()
+    run_program(1, ['--reset-checkpoint'])
+    unresolvable_ok = verify_unresolvable_keeps_address(unresolvable_id)
+
+    # Step 11: Verify checkpoint
+    print("\nStep 11: Verifying checkpoint...")
     checkpoint_ok = verify_checkpoint()
 
     # Summary
@@ -437,6 +485,7 @@ def main():
         ("Mode 0 (OSM fix)", mode0_ok),
         ("Mode 1 (map API update)", mode1_ok),
         ("Mode 3 (map API fix)", mode3_ok),
+        ("Unresolvable position", unresolvable_ok),
         ("Checkpoint", checkpoint_ok),
     ]
     for name, ok in results:

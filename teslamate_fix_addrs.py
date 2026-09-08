@@ -270,6 +270,23 @@ class TencentGeocoder(ReverseGeocoder):
         return default
 
     @staticmethod
+    def _set_present_fields(address_record, fields):
+        """Assign only the fields whose value is not empty."""
+        for field_name, value in fields:
+            if value:
+                setattr(address_record, field_name, value)
+
+    @staticmethod
+    def _has_address_data(result):
+        """True when the response carries a usable address."""
+        r = result.get('result', {})
+        component = r.get('address_component', {})
+        for key in ['city', 'district', 'street']:
+            if component.get(key):
+                return True
+        return bool(r.get('formatted_addresses', {}).get('recommend'))
+
+    @staticmethod
     def _get_reference_title(reference, *keys):
         """Return the title of the first present address_reference entry."""
         for key in keys:
@@ -314,6 +331,10 @@ class TencentGeocoder(ReverseGeocoder):
             return None
         if result is None or result.get('status') != 0:
             logging.error("Tencent geocoder error: %s" % raw)
+            return None
+        if not self._has_address_data(result):
+            logging.warning("Tencent geocoder has no address for %s,%s: %s" %
+                            (lat, lng, raw))
             return None
 
         logging.debug("Tencent raw response: %s" %
@@ -360,20 +381,18 @@ class TencentGeocoder(ReverseGeocoder):
                       neighbourhood, display_name,
                       self._get_safe(formatted, 'rough')))
 
-        address_record.country = country
-        address_record.state = province
-        address_record.city = city
-        address_record.county = district
-        address_record.display_name = display_name
-        address_record.house_number = street_number
         address_record.updated_at = datetime.now().replace(microsecond=0)
 
-        if street:
-            address_record.road = street
-        if name:
-            address_record.name = name
-        if neighbourhood:
-            address_record.neighbourhood = neighbourhood
+        self._set_present_fields(address_record, [
+            ('country', country),
+            ('state', province),
+            ('city', city),
+            ('county', district),
+            ('display_name', display_name),
+            ('house_number', street_number),
+            ('road', street),
+            ('name', name),
+            ('neighbourhood', neighbourhood)])
 
 
 # ---------- OSM helpers ----------
