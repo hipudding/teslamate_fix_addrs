@@ -1,0 +1,9 @@
+.env
+.git
+.gitignore
+.dockerignore
+__pycache__
+*.pyc
+*.db
+checkpoint.json
+test_checkpoint.json
