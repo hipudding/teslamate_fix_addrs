@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-Test script for teslamate_fix_addrs.py using SQLite.
+Live integration test for teslamate_fix_addrs.py using SQLite.
+
+It calls the real OSM Nominatim (and Tencent Maps when TENCENT_KEY is set)
+APIs. Offline unit tests live in tests/ and run with `pytest`.
 
 Creates a SQLite database with TeslaMate-compatible tables, inserts test data,
 and runs the program in Mode 0 (OSM fix) and Mode 1 (map API update)
@@ -343,13 +346,17 @@ def main():
     print("\nStep 5: Verifying Mode 0 results...")
     mode0_ok = verify_mode0()
 
-    # Step 6: Run Mode 1 (map API update)
-    print("\nStep 6: Running Mode 1 (map API update)...")
-    run_program(1, ['--reset-checkpoint'])
+    # Step 6: Run Mode 1 (map API update), needs a real key.
+    if MAP_API_KEY:
+        print("\nStep 6: Running Mode 1 (map API update)...")
+        run_program(1, ['--reset-checkpoint'])
 
-    # Step 7: Verify Mode 1
-    print("\nStep 7: Verifying Mode 1 results...")
-    mode1_ok = verify_mode1()
+        # Step 7: Verify Mode 1
+        print("\nStep 7: Verifying Mode 1 results...")
+        mode1_ok = verify_mode1()
+    else:
+        print("\nStep 6/7: TENCENT_KEY is not set, skip Mode 1.")
+        mode1_ok = True
 
     # Step 8: Verify checkpoint
     print("\nStep 8: Verifying checkpoint...")

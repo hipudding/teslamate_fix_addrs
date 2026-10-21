@@ -2,3 +2,6 @@
 *.db
 checkpoint.json
 test_checkpoint.json
+.env
+__pycache__/
+.pytest_cache/

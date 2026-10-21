@@ -1,6 +1,6 @@
 services:
   teslamate_fix_addrs:
-    image: huafengchun/teslamate_fix_addrs:latest
+    image: hipudding/teslamate_fix_addrs:latest
     container_name: teslmate_fix_addrs
     restart: unless-stopped
     environment:
@@ -12,10 +12,15 @@ services:
     - BATCH=10
     - HTTP_TIMEOUT=5
     - HTTP_RETRY=5
-    - INTERVAL=5
+    - INTERVAL=300
     - MODE=0
     - TENCENT_KEY=
     - TENCENT_SK=
     - USER_AGENT=
     - OSM_INTERVAL=1.0
     - GEOCODER_INTERVAL=0.3
+    volumes:
+    - teslamate-fix-addrs-data:/data
+
+volumes:
+  teslamate-fix-addrs-data:

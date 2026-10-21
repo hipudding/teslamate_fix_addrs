@@ -1,0 +1,36 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.12"]
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: teslamate
+          POSTGRES_PASSWORD: teslamate
+          POSTGRES_DB: teslamate
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -r requirements-dev.txt
+      - name: pytest (SQLite)
+        run: pytest -q tests
+      - name: pytest (PostgreSQL)
+        run: pytest -q tests
+        env:
+          TEST_DB_URL: postgresql+psycopg2://teslamate:teslamate@localhost:5432/teslamate
